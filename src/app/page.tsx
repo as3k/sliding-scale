@@ -118,6 +118,48 @@ function formatHistoryTime(timestamp: string) {
   }).format(new Date(timestamp));
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function dateInputValue(timestamp: string) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function timeInputValue(timestamp: string) {
+  const date = new Date(timestamp);
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function mergeDateAndTime(timestamp: string, nextDate: string, nextTime: string) {
+  const current = new Date(timestamp);
+  const [year, month, day] = nextDate.split("-").map(Number);
+  const [hour, minute] = nextTime.split(":").map(Number);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
+    return timestamp;
+  }
+
+  current.setFullYear(year, month - 1, day);
+  current.setHours(hour, minute, 0, 0);
+  return current.toISOString();
+}
+
+function createId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function Home() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const lastAutoSavedRef = useRef<{ key: string; time: number } | null>(null);
@@ -129,6 +171,7 @@ export default function Home() {
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("name");
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [toast, setToast] = useState("");
   const [viewport, setViewport] = useState<ViewportSize>({
     height: null,
     offsetTop: 0,
@@ -193,6 +236,12 @@ export default function Home() {
   }, [hasCompletedOnboarding, hydrated, settings]);
 
   useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 1800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
     if (!hydrated) return;
     window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   }, [history, hydrated]);
@@ -221,7 +270,7 @@ export default function Home() {
       lastAutoSavedRef.current = { key, time: now };
       setHistory((current) => [
         {
-          id: crypto.randomUUID(),
+          id: createId(),
           timestamp: new Date().toISOString(),
           bg,
           units: result.entry.units,
@@ -335,6 +384,13 @@ export default function Home() {
     setSettingsOpen(false);
   }
 
+  function updateHistoryEntry(id: string, updates: Partial<HistoryEntry>) {
+    setHistory((current) =>
+      current.map((entry) => (entry.id === id ? { ...entry, ...updates } : entry)),
+    );
+    setToast("Saved");
+  }
+
   function removeHistoryEntry(id: string) {
     setHistory((current) => current.filter((entry) => entry.id !== id));
   }
@@ -381,12 +437,20 @@ export default function Home() {
         <section className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden rounded-[34px] bg-[#111722]/90 p-4 text-center shadow-[0_28px_70px_rgba(0,0,0,0.45)] ring-1 ring-white/10 backdrop-blur-xl sm:p-6">
           {!result ? (
             <>
-              <p className="text-[clamp(4.5rem,22dvh,8rem)] font-black tracking-tight text-white/12">
-                —
+              <p className="text-[clamp(4rem,18dvh,7rem)] font-black tracking-tight text-[#d9ff63] drop-shadow-[0_0_34px_rgba(217,255,99,0.18)]">
+                BG?
               </p>
-              <p className="mt-3 text-base font-bold text-slate-400">
-                Enter your reading
+              <p className="mt-3 text-xl font-black text-white">
+                Enter your blood glucose below
               </p>
+              <p className="mt-2 text-base font-bold text-slate-400">
+                Dose appears here
+              </p>
+              {history[0] && (
+                <p className="mx-auto mt-5 rounded-full bg-[#202839] px-4 py-2 text-sm font-bold text-slate-300 ring-1 ring-white/10">
+                  Last: {history[0].bg} mg/dL → {history[0].units} units
+                </p>
+              )}
             </>
           ) : "error" in result ? (
             <>
@@ -477,6 +541,7 @@ export default function Home() {
                 onAddScaleRow={addScaleRow}
                 onRemoveScaleRow={removeScaleRow}
                 onHistoryEnabledChange={setHistoryEnabled}
+                onUpdateHistoryEntry={updateHistoryEntry}
                 onRemoveHistoryEntry={removeHistoryEntry}
                 onClearHistory={clearHistory}
                 onDownload={downloadSettings}
@@ -487,6 +552,14 @@ export default function Home() {
               />
             )}
           </section>
+        </div>
+      )}
+
+      {toast && (
+        <div className="absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-4">
+          <div className="rounded-full bg-[#d9ff63] px-5 py-3 text-sm font-black text-[#070b12] shadow-[0_12px_40px_rgba(217,255,99,0.22)]">
+            {toast}
+          </div>
         </div>
       )}
     </main>
@@ -685,6 +758,7 @@ function SettingsPanel({
   onAddScaleRow,
   onRemoveScaleRow,
   onHistoryEnabledChange,
+  onUpdateHistoryEntry,
   onRemoveHistoryEntry,
   onClearHistory,
   onDownload,
@@ -702,6 +776,7 @@ function SettingsPanel({
   onAddScaleRow: () => void;
   onRemoveScaleRow: (index: number) => void;
   onHistoryEnabledChange: (enabled: boolean) => void;
+  onUpdateHistoryEntry: (id: string, updates: Partial<HistoryEntry>) => void;
   onRemoveHistoryEntry: (id: string) => void;
   onClearHistory: () => void;
   onDownload: () => void;
@@ -710,6 +785,61 @@ function SettingsPanel({
   onRestoreDev: () => void;
   onDone: () => void;
 }) {
+  const [view, setView] = useState<"main" | "scale">("main");
+
+  if (view === "scale") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="mb-4 flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setView("main")}
+            className="grid h-11 w-11 place-items-center rounded-2xl bg-[#202839] text-xl font-black text-white ring-1 ring-white/10 active:scale-95"
+            aria-label="Back to settings"
+          >
+            ‹
+          </button>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              Settings
+            </p>
+            <h3 className="text-2xl font-black text-white">Sliding scale</h3>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
+          <p className="mb-3 rounded-2xl bg-[#202839] p-4 text-sm font-semibold leading-6 text-slate-300 ring-1 ring-white/10">
+            Edit the ranges and units used by the calculator. Make sure this
+            matches your prescribed scale.
+          </p>
+          <button
+            type="button"
+            onClick={onUseCommon}
+            className="mb-3 w-full rounded-2xl bg-[#202839] px-3 py-3 text-sm font-black text-slate-300 ring-1 ring-white/10 active:scale-[0.99]"
+          >
+            Use common default
+          </button>
+          <ScaleEditor
+            scale={settings.scale}
+            onUpdateScale={onUpdateScale}
+            onAddScaleRow={onAddScaleRow}
+            onRemoveScaleRow={onRemoveScaleRow}
+          />
+        </div>
+
+        <div className="shrink-0 border-t border-white/10 pt-3 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            onClick={() => setView("main")}
+            className="w-full rounded-2xl bg-[#d9ff63] py-4 text-base font-black text-[#070b12] active:scale-[0.99]"
+          >
+            Back to settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pb-4">
@@ -730,29 +860,28 @@ function SettingsPanel({
           history={history}
           enabled={settings.historyEnabled}
           onEnabledChange={onHistoryEnabledChange}
+          onUpdateEntry={onUpdateHistoryEntry}
           onRemoveEntry={onRemoveHistoryEntry}
           onClearHistory={onClearHistory}
         />
 
         <section>
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-              Sliding scale
-            </h3>
-            <button
-              type="button"
-              onClick={onUseCommon}
-              className="rounded-full bg-[#202839] px-3 py-1 text-xs font-black text-slate-300"
-            >
-              Common default
-            </button>
-          </div>
-          <ScaleEditor
-            scale={settings.scale}
-            onUpdateScale={onUpdateScale}
-            onAddScaleRow={onAddScaleRow}
-            onRemoveScaleRow={onRemoveScaleRow}
-          />
+          <h3 className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+            Dose settings
+          </h3>
+          <button
+            type="button"
+            onClick={() => setView("scale")}
+            className="mt-2 flex w-full items-center justify-between rounded-3xl bg-[#202839] p-5 text-left ring-1 ring-white/10 active:scale-[0.99]"
+          >
+            <span>
+              <span className="block text-lg font-black text-white">Sliding scale</span>
+              <span className="mt-1 block text-sm font-semibold text-slate-500">
+                {settings.scale.length} range{settings.scale.length === 1 ? "" : "s"}
+              </span>
+            </span>
+            <span className="text-2xl font-black text-[#d9ff63]">›</span>
+          </button>
         </section>
 
         <section className="space-y-2">
@@ -826,15 +955,18 @@ function HistoryPanel({
   history,
   enabled,
   onEnabledChange,
+  onUpdateEntry,
   onRemoveEntry,
   onClearHistory,
 }: {
   history: HistoryEntry[];
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
+  onUpdateEntry: (id: string, updates: Partial<HistoryEntry>) => void;
   onRemoveEntry: (id: string) => void;
   onClearHistory: () => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const chartEntries = [...history].reverse().slice(-20);
   const maxBg = Math.max(250, ...chartEntries.map((entry) => entry.bg));
   const points = chartEntries
@@ -916,36 +1048,97 @@ function HistoryPanel({
 
       {history.length > 0 && (
         <div className="space-y-2">
-          {history.slice(0, 30).map((entry) => (
-            <div
-              key={entry.id}
-              className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl bg-[#202839] px-4 py-3 ring-1 ring-white/10"
-            >
-              <div>
-                <p className="text-sm font-black text-white">
-                  {formatHistoryDate(entry.timestamp)} · {formatHistoryTime(entry.timestamp)}
-                </p>
-                <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Range {entry.range}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-black text-[#d9ff63]">{entry.bg}</p>
-                <p className="text-xs font-semibold text-slate-500">mg/dL</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-black text-white">{entry.units}</p>
-                <p className="text-xs font-semibold text-slate-500">units</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onRemoveEntry(entry.id)}
-                className="col-span-3 rounded-xl bg-black/20 py-2 text-xs font-black text-slate-300"
+          {history.slice(0, 30).map((entry) => {
+            const isEditing = editingId === entry.id;
+
+            return (
+              <div
+                key={entry.id}
+                className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-2xl bg-[#202839] px-4 py-3 ring-1 ring-white/10"
               >
-                Remove
-              </button>
-            </div>
-          ))}
+                <div>
+                  <p className="text-sm font-black text-white">
+                    {formatHistoryDate(entry.timestamp)} · {formatHistoryTime(entry.timestamp)}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Range {entry.range}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-[#d9ff63]">{entry.bg}</p>
+                  <p className="text-xs font-semibold text-slate-500">mg/dL</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-white">{entry.units}</p>
+                  <p className="text-xs font-semibold text-slate-500">units</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingId(isEditing ? null : entry.id)}
+                  className={
+                    isEditing
+                      ? "grid h-9 w-9 place-items-center rounded-xl bg-[#d9ff63] text-sm font-black text-[#070b12]"
+                      : "grid h-9 w-9 place-items-center rounded-xl bg-black/20 text-sm font-black text-slate-300"
+                  }
+                  aria-label="Edit history entry time"
+                >
+                  ✎
+                </button>
+
+                {isEditing && (
+                  <>
+                    <div className="col-span-4 grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                          Date
+                        </span>
+                        <input
+                          type="date"
+                          value={dateInputValue(entry.timestamp)}
+                          onChange={(event) =>
+                            onUpdateEntry(entry.id, {
+                              timestamp: mergeDateAndTime(
+                                entry.timestamp,
+                                event.target.value,
+                                timeInputValue(entry.timestamp),
+                              ),
+                            })
+                          }
+                          className="mt-1 w-full rounded-xl bg-black/20 px-3 py-2 text-sm font-black text-white outline-none ring-1 ring-white/10"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                          Time
+                        </span>
+                        <input
+                          type="time"
+                          value={timeInputValue(entry.timestamp)}
+                          onChange={(event) =>
+                            onUpdateEntry(entry.id, {
+                              timestamp: mergeDateAndTime(
+                                entry.timestamp,
+                                dateInputValue(entry.timestamp),
+                                event.target.value,
+                              ),
+                            })
+                          }
+                          className="mt-1 w-full rounded-xl bg-black/20 px-3 py-2 text-sm font-black text-white outline-none ring-1 ring-white/10"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveEntry(entry.id)}
+                      className="col-span-4 rounded-xl bg-[#ffb86b]/20 py-2 text-xs font-black text-[#ffb86b]"
+                    >
+                      Remove entry
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
