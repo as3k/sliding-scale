@@ -197,6 +197,7 @@ export default function Home() {
   const [value, setValue] = useState("");
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("name");
@@ -465,14 +466,24 @@ export default function Home() {
               Insulin Dose
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="grid h-12 w-12 place-items-center rounded-2xl bg-[#171d29] text-xl shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/10 active:scale-95"
-            aria-label="Open settings"
-          >
-            ⚙︎
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="grid h-12 w-12 place-items-center rounded-2xl bg-[#171d29] text-xl shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/10 active:scale-95"
+              aria-label="Open history"
+            >
+              ◷
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="grid h-12 w-12 place-items-center rounded-2xl bg-[#171d29] text-xl shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/10 active:scale-95"
+              aria-label="Open settings"
+            >
+              ⚙︎
+            </button>
+          </div>
         </header>
 
         <section className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden rounded-[34px] bg-[#111722]/90 p-4 text-center shadow-[0_28px_70px_rgba(0,0,0,0.45)] ring-1 ring-white/10 backdrop-blur-xl sm:p-6">
@@ -530,6 +541,40 @@ export default function Home() {
         </label>
       </div>
 
+      {historyOpen && (
+        <div className="absolute inset-0 z-30 flex items-end bg-black/55 backdrop-blur-sm">
+          <section className="mx-auto flex max-h-[90%] w-full max-w-md flex-col rounded-t-[34px] bg-[#111722] p-4 shadow-[0_-24px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+            <div className="flex shrink-0 items-center justify-between pb-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d9ff63]">
+                  Readings
+                </p>
+                <h2 className="text-2xl font-black">History</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="grid h-11 w-11 place-items-center rounded-2xl bg-[#202839] text-xl font-black text-white ring-1 ring-white/10 active:scale-95"
+                aria-label="Close history"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+              <HistoryPanel
+                history={history}
+                enabled={settings.historyEnabled}
+                onEnabledChange={setHistoryEnabled}
+                onUpdateEntry={updateHistoryEntry}
+                onRemoveEntry={removeHistoryEntry}
+                onClearHistory={clearHistory}
+              />
+            </div>
+          </section>
+        </div>
+      )}
+
       {settingsOpen && (
         <div className="absolute inset-0 z-30 flex items-end bg-black/55 backdrop-blur-sm">
           <section className="mx-auto flex max-h-[90%] w-full max-w-md flex-col rounded-t-[34px] bg-[#111722] p-4 shadow-[0_-24px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
@@ -572,7 +617,6 @@ export default function Home() {
             ) : (
               <SettingsPanel
                 settings={settings}
-                history={history}
                 uploadInputRef={uploadInputRef}
                 onNameChange={(name) => setSettings((current) => ({ ...current, name }))}
                 onUseCommon={() =>
@@ -581,10 +625,6 @@ export default function Home() {
                 onUpdateScale={updateScale}
                 onAddScaleRow={addScaleRow}
                 onRemoveScaleRow={removeScaleRow}
-                onHistoryEnabledChange={setHistoryEnabled}
-                onUpdateHistoryEntry={updateHistoryEntry}
-                onRemoveHistoryEntry={removeHistoryEntry}
-                onClearHistory={clearHistory}
                 onDownload={downloadSettings}
                 onUpload={(file) => void uploadSettings(file)}
                 onClearDev={clearLocalSettingsForTesting}
@@ -791,17 +831,12 @@ function OnboardingFlow({
 
 function SettingsPanel({
   settings,
-  history,
   uploadInputRef,
   onNameChange,
   onUseCommon,
   onUpdateScale,
   onAddScaleRow,
   onRemoveScaleRow,
-  onHistoryEnabledChange,
-  onUpdateHistoryEntry,
-  onRemoveHistoryEntry,
-  onClearHistory,
   onDownload,
   onUpload,
   onClearDev,
@@ -809,17 +844,12 @@ function SettingsPanel({
   onDone,
 }: {
   settings: Settings;
-  history: HistoryEntry[];
   uploadInputRef: React.RefObject<HTMLInputElement | null>;
   onNameChange: (name: string) => void;
   onUseCommon: () => void;
   onUpdateScale: (index: number, field: keyof ScaleEntry, value: string) => void;
   onAddScaleRow: () => void;
   onRemoveScaleRow: (index: number) => void;
-  onHistoryEnabledChange: (enabled: boolean) => void;
-  onUpdateHistoryEntry: (id: string, updates: Partial<HistoryEntry>) => void;
-  onRemoveHistoryEntry: (id: string) => void;
-  onClearHistory: () => void;
   onDownload: () => void;
   onUpload: (file: File | undefined) => void;
   onClearDev: () => void;
@@ -896,15 +926,6 @@ function SettingsPanel({
             className="mt-2 w-full rounded-2xl bg-[#202839] px-4 py-3 text-base font-black text-white outline-none ring-1 ring-white/10 placeholder:text-slate-600 focus:ring-[#d9ff63]/50"
           />
         </section>
-
-        <HistoryPanel
-          history={history}
-          enabled={settings.historyEnabled}
-          onEnabledChange={onHistoryEnabledChange}
-          onUpdateEntry={onUpdateHistoryEntry}
-          onRemoveEntry={onRemoveHistoryEntry}
-          onClearHistory={onClearHistory}
-        />
 
         <section>
           <h3 className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
