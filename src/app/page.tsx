@@ -11,6 +11,12 @@ type HistoryEntry = {
   units: number;
   range: string;
 };
+type AppBackup = {
+  version: 1;
+  exportedAt: string;
+  settings: Settings;
+  history: HistoryEntry[];
+};
 type ViewportSize = { height: number | null; offsetTop: number };
 type OnboardingStep = "name" | "scale" | "review";
 
@@ -101,6 +107,31 @@ function isValidHistoryEntry(value: unknown): value is HistoryEntry {
 function parseHistory(value: unknown): HistoryEntry[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isValidHistoryEntry);
+}
+
+function parseBackup(value: unknown): { settings: Settings; history: HistoryEntry[] } | null {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as Partial<AppBackup> & Partial<Settings>;
+
+  if (candidate.settings) {
+    const settings = parseSettings(candidate.settings);
+    if (!settings) return null;
+
+    return {
+      settings,
+      history: parseHistory(candidate.history),
+    };
+  }
+
+  // Backward compatibility: older exports were settings-only JSON.
+  const settings = parseSettings(candidate);
+  if (!settings) return null;
+
+  return {
+    settings,
+    history: [],
+  };
 }
 
 function formatHistoryDate(timestamp: string) {
@@ -336,13 +367,20 @@ export default function Home() {
   }
 
   function downloadSettings() {
-    const blob = new Blob([JSON.stringify(settings, null, 2)], {
+    const backup: AppBackup = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings,
+      history,
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "insulin-dose-settings.json";
+    link.download = "sliding-scale-backup.json";
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -351,19 +389,22 @@ export default function Home() {
     if (!file) return;
 
     try {
-      const imported = parseSettings(JSON.parse(await file.text()));
+      const imported = parseBackup(JSON.parse(await file.text()));
       if (!imported) {
-        window.alert("That file does not look like valid settings.");
+        window.alert("That file does not look like a valid Sliding Scale backup.");
         return;
       }
 
-      setSettings(imported);
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
+      setSettings(imported.settings);
+      setHistory(imported.history);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(imported.settings));
+      window.localStorage.setItem(HISTORY_KEY, JSON.stringify(imported.history));
       setHasCompletedOnboarding(true);
       setIsOnboarding(false);
       setSettingsOpen(false);
+      setToast("Backup restored");
     } catch {
-      window.alert("Could not import settings JSON.");
+      window.alert("Could not import backup JSON.");
     } finally {
       if (uploadInputRef.current) uploadInputRef.current.value = "";
     }
@@ -888,20 +929,23 @@ function SettingsPanel({
           <h3 className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
             Backup / restore
           </h3>
+          <p className="text-xs font-semibold leading-5 text-slate-500">
+            Export includes settings, sliding scale, and saved readings.
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={onDownload}
               className="rounded-2xl bg-[#202839] px-3 py-3 text-sm font-black text-white ring-1 ring-white/10 active:scale-[0.99]"
             >
-              Download
+              Export all
             </button>
             <button
               type="button"
               onClick={() => uploadInputRef.current?.click()}
               className="rounded-2xl bg-[#202839] px-3 py-3 text-sm font-black text-white ring-1 ring-white/10 active:scale-[0.99]"
             >
-              Upload
+              Restore
             </button>
           </div>
           <input
