@@ -204,6 +204,7 @@ export default function Home() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState("");
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [viewport, setViewport] = useState<ViewportSize>({
     height: null,
     offsetTop: 0,
@@ -266,6 +267,12 @@ export default function Home() {
     if (!hydrated || !hasCompletedOnboarding) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [hasCompletedOnboarding, hydrated, settings]);
+
+  useEffect(() => {
+    const handleUpdateAvailable = () => setUpdateAvailable(true);
+    window.addEventListener("pwa-update-available", handleUpdateAvailable);
+    return () => window.removeEventListener("pwa-update-available", handleUpdateAvailable);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -636,11 +643,21 @@ export default function Home() {
         </div>
       )}
 
-      {toast && (
+      {(toast || updateAvailable) && (
         <div className="absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-4">
-          <div className="rounded-full bg-[#d9ff63] px-5 py-3 text-sm font-black text-[#070b12] shadow-[0_12px_40px_rgba(217,255,99,0.22)]">
-            {toast}
-          </div>
+          {updateAvailable ? (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-full bg-[#d9ff63] px-5 py-3 text-sm font-black text-[#070b12] shadow-[0_12px_40px_rgba(217,255,99,0.22)] active:scale-[0.98]"
+            >
+              New version available — tap to refresh
+            </button>
+          ) : (
+            <div className="rounded-full bg-[#d9ff63] px-5 py-3 text-sm font-black text-[#070b12] shadow-[0_12px_40px_rgba(217,255,99,0.22)]">
+              {toast}
+            </div>
+          )}
         </div>
       )}
     </main>
