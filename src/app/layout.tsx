@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Insulin Dose",
+  title: "Sliding Scale",
   description: "Quick insulin dosing based on your sliding scale",
-  applicationName: "Insulin Dose",
+  applicationName: "Sliding Scale",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Insulin Dose",
+    title: "Sliding Scale",
     statusBarStyle: "default",
   },
   formatDetection: {

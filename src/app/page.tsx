@@ -470,7 +470,7 @@ export default function Home() {
               {settings.name ? `Hi, ${settings.name}` : "Diabetes"}
             </p>
             <h1 className="mt-1 text-3xl font-black tracking-tight text-white">
-              Insulin Dose
+              Sliding Scale
             </h1>
           </div>
           <div className="flex items-center gap-2">
